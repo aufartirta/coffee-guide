@@ -126,7 +126,8 @@ export default function App() {
     Object.values(intervalsRef.current).forEach(clearInterval);
     intervalsRef.current = {};
     setStates(initStates(method));
-  }, [methodId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [methodId]);
 
   function selectMethod(id) {
     Object.values(intervalsRef.current).forEach(clearInterval);
