@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const METHODS = [
   {
@@ -98,93 +98,111 @@ const METHODS = [
   },
 ];
 
+const amber = { bg: "#FAEEDA", text: "#633806", border: "#854F0B" };
+const green = { bg: "#EAF3DE", text: "#27500A", border: "#3B6D11" };
+const gray = { bg: "#f5f4f0" };
+
 function fmt(s) {
   const m = Math.floor(s / 60), sec = s % 60;
   return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-function initStates(method) {
+function buildFreshStates(method) {
   return method.steps.map(s => ({ done: false, remaining: s.timer, running: false }));
 }
-
-const amber = { bg: "#FAEEDA", text: "#633806", border: "#854F0B", mid: "#EF9F27" };
-const green = { bg: "#EAF3DE", text: "#27500A", border: "#3B6D11" };
-const gray = { bg: "#f5f4f0", text: "#5F5E5A", border: "#ccc" };
 
 export default function App() {
   const [methodId, setMethodId] = useState("french");
   const [coffee, setCoffee] = useState(20);
-  const [states, setStates] = useState(() => initStates(METHODS[0]));
-  const intervalsRef = useRef({});
+  const [states, setStates] = useState(() => buildFreshStates(METHODS[0]));
+  const intervalRef = useRef(null);
+  const activeTimerIdx = useRef(null);
 
   const method = METHODS.find(m => m.id === methodId);
   const water = Math.round(coffee * method.ratio);
   const activeIdx = states.findIndex(s => !s.done);
   const allDone = states.every(s => s.done);
 
-  useEffect(() => {
-    Object.values(intervalsRef.current).forEach(clearInterval);
-    intervalsRef.current = {};
-    setStates(initStates(method));
-  }, [methodId]);
+  const clearActiveTimer = useCallback(() => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      activeTimerIdx.current = null;
+    }
+  }, []);
 
-  function selectMethod(id) {
-    Object.values(intervalsRef.current).forEach(clearInterval);
-    intervalsRef.current = {};
+  const switchMethod = useCallback((id) => {
+    clearActiveTimer();
     setMethodId(id);
-  }
+    setStates(buildFreshStates(METHODS.find(m => m.id === id)));
+  }, [clearActiveTimer]);
+
+  useEffect(() => {
+    return () => clearActiveTimer();
+  }, [clearActiveTimer]);
 
   function startTimer(i) {
-    if (intervalsRef.current[i]) return;
-    intervalsRef.current[i] = setInterval(() => {
+    if (intervalRef.current) return;
+    activeTimerIdx.current = i;
+    setStates(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], running: true };
+      return n;
+    });
+    intervalRef.current = setInterval(() => {
       setStates(prev => {
-        const next = [...prev];
-        const st = { ...next[i] };
+        const n = [...prev];
+        const st = { ...n[i] };
         st.remaining = Math.max(0, st.remaining - 1);
         if (st.remaining === 0) {
-          clearInterval(intervalsRef.current[i]);
-          delete intervalsRef.current[i];
+          clearActiveTimer();
           st.running = false;
         }
-        next[i] = st;
-        return next;
+        n[i] = st;
+        return n;
       });
     }, 1000);
-    setStates(prev => { const n = [...prev]; n[i] = { ...n[i], running: true }; return n; });
   }
 
   function pauseTimer(i) {
-    clearInterval(intervalsRef.current[i]);
-    delete intervalsRef.current[i];
-    setStates(prev => { const n = [...prev]; n[i] = { ...n[i], running: false }; return n; });
+    clearActiveTimer();
+    setStates(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], running: false };
+      return n;
+    });
   }
 
   function resetTimer(i) {
-    clearInterval(intervalsRef.current[i]);
-    delete intervalsRef.current[i];
-    setStates(prev => { const n = [...prev]; n[i] = { ...n[i], remaining: method.steps[i].timer, running: false }; return n; });
+    clearActiveTimer();
+    setStates(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], remaining: method.steps[i].timer, running: false };
+      return n;
+    });
   }
 
   function nextStep(i) {
-    clearInterval(intervalsRef.current[i]);
-    delete intervalsRef.current[i];
-    setStates(prev => { const n = [...prev]; n[i] = { ...n[i], done: true, running: false }; return n; });
+    clearActiveTimer();
+    setStates(prev => {
+      const n = [...prev];
+      n[i] = { ...n[i], done: true, running: false };
+      return n;
+    });
   }
 
   function reset() {
-    Object.values(intervalsRef.current).forEach(clearInterval);
-    intervalsRef.current = {};
-    setStates(initStates(method));
+    clearActiveTimer();
+    setStates(buildFreshStates(method));
   }
 
   return (
     <div style={{ padding: "1.25rem 1rem", maxWidth: 580, margin: "0 auto" }}>
-
-      {/* Method tabs */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
         {METHODS.map(m => (
-          <button key={m.id} onClick={() => selectMethod(m.id)} style={{
-            padding: "6px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer", fontWeight: m.id === methodId ? 500 : 400,
+          <button key={m.id} onClick={() => switchMethod(m.id)} style={{
+            padding: "6px 14px", borderRadius: 999, fontSize: 13, cursor: "pointer",
+            fontWeight: m.id === methodId ? 500 : 400,
             border: `0.5px solid ${m.id === methodId ? amber.border : "#ccc"}`,
             background: m.id === methodId ? amber.bg : "transparent",
             color: m.id === methodId ? amber.text : "#888",
@@ -192,22 +210,19 @@ export default function App() {
         ))}
       </div>
 
-      {/* Credit badge */}
       <div style={{ fontSize: 11, color: amber.text, background: amber.bg, display: "inline-block", borderRadius: 999, padding: "3px 10px", marginBottom: 8, fontWeight: 500 }}>
         {method.credit}
       </div>
 
-      {/* Description */}
       <p style={{ fontSize: 13, color: "#888", lineHeight: 1.65, marginBottom: "1.25rem" }}>{method.desc}</p>
 
-      {/* Controls */}
       <div style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: "1.25rem", flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 11, color: "#aaa", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>Coffee</div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input type="number" min={1} max={200} step={1} value={coffee}
               onChange={e => setCoffee(Math.max(1, parseInt(e.target.value) || 1))}
-              style={{ width: 68, textAlign: "center", fontSize: 18, fontWeight: 500, padding: "6px 8px", border: `0.5px solid #ccc`, borderRadius: 8, background: "transparent", color: "inherit" }} />
+              style={{ width: 68, textAlign: "center", fontSize: 18, fontWeight: 500, padding: "6px 8px", border: "0.5px solid #ccc", borderRadius: 8, background: "transparent", color: "inherit" }} />
             <span style={{ fontSize: 13, color: "#888" }}>g</span>
           </div>
         </div>
@@ -223,7 +238,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Steps header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
         <span style={{ fontSize: 14, fontWeight: 500 }}>Steps</span>
         <button onClick={reset} style={{ fontSize: 12, padding: "3px 12px", borderRadius: 999, border: "0.5px solid #ccc", background: "transparent", color: "#888", cursor: "pointer" }}>Reset</button>
@@ -237,12 +251,13 @@ export default function App() {
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {method.steps.map((step, i) => {
             const st = states[i];
+            if (!st) return null;
             const isActive = i === activeIdx;
             const isDone = st.done;
             const timerDone = step.timer && st.remaining === 0;
 
             return (
-              <div key={i} style={{
+              <div key={`${methodId}-${i}`} style={{
                 border: `0.5px solid ${isActive ? amber.border : "#e0e0e0"}`,
                 borderRadius: 12, padding: "12px 14px",
                 opacity: isDone ? 0.4 : 1,
@@ -260,7 +275,7 @@ export default function App() {
                 </div>
 
                 {step.timer && isActive && (
-                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", paddingLeft: 2 }}>
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                     {timerDone ? (
                       <>
                         <span style={{ color: green.text, fontWeight: 500, fontSize: 13 }}>Timer done!</span>
