@@ -198,6 +198,11 @@ export default function App() {
 
   return (
     <div style={{ padding: "1.25rem 1rem", maxWidth: 580, margin: "0 auto" }}>
+      <div style={{ marginBottom: "1.5rem" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 500, margin: 0 }}>Coffee Brewing Guide ☕</h1>
+        <p style={{ fontSize: 13, color: "#888", margin: "4px 0 0" }}>by Aufar Tirta</p>
+      </div>
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: "1.25rem" }}>
         {METHODS.map(m => (
           <button key={m.id} onClick={() => switchMethod(m.id)} style={{
